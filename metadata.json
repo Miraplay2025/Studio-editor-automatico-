@@ -1,6 +1,6 @@
 {
-  "name": "CineCut",
-  "description": "Editor de vídeo offline profissional com animações, transições e transcrição de áudio nativa.",
+  "name": "Video Motion Editor",
+  "description": "Android native video & image motion editor with dual-layer animations, pan & zoom, transitions, audio sync, and background rendering.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
