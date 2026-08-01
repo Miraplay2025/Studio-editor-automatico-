@@ -1,0 +1,6 @@
+{
+  "name": "CineCut",
+  "description": "Editor de vídeo offline profissional com animações, transições e transcrição de áudio nativa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
