@@ -2,232 +2,343 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.audio.OfflineSpeechVadEngine
-import com.example.data.db.*
-import com.example.data.model.*
-import com.example.data.repository.ProjectRepository
-import com.example.service.VideoRenderService
-import kotlinx.coroutines.flow.*
+import com.example.data.local.AppDatabase
+import com.example.data.local.JsonUtil
+import com.example.data.local.ProjectRepository
+import com.example.data.models.AspectRatio
+import com.example.data.models.AudioTrack
+import com.example.data.models.CameraMotion
+import com.example.data.models.ExportConfig
+import com.example.data.models.ExportResolution
+import com.example.data.models.MediaItem
+import com.example.data.models.MediaType
+import com.example.data.models.MotionAnimation
+import com.example.data.models.ProjectEntity
+import com.example.data.models.TransitionEffect
+import com.example.engine.AudioSyncEngine
+import com.example.engine.SampleMediaProvider
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
-import java.util.UUID
+
+import com.example.utils.MediaHelper
+
+enum class EditorPanel {
+    MAIN_CONTROLS,
+    ANIMATIONS,
+    CAMERA_ZOOM,
+    TRANSITIONS,
+    AUDIO_SYNC,
+    ASPECT_RATIO,
+    EXPORT_SETTINGS
+}
+
+data class EditorUiState(
+    val project: ProjectEntity? = null,
+    val mediaItems: List<MediaItem> = emptyList(),
+    val audioTracks: List<AudioTrack> = emptyList(),
+    val selectedTransitions: List<String> = listOf("CROSSFADE", "SLIDE_LEFT", "SLIDE_RIGHT"),
+    val activePanel: EditorPanel = EditorPanel.MAIN_CONTROLS,
+    val selectedMediaIndex: Int = 0,
+    val isPlaying: Boolean = false,
+    val currentTimeMs: Long = 0L,
+    val totalDurationMs: Long = 0L,
+    val aspectRatio: AspectRatio = AspectRatio.RATIO_9_16,
+    val exportConfig: ExportConfig = ExportConfig(),
+    val isMultiSelectTransitions: Boolean = false,
+    val missingAnimationIndex: Int = -1,
+    val isAnalyzingAudio: Boolean = false,
+    val toastMessage: String? = null
+)
 
 class EditorViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: ProjectRepository = ProjectRepository(AppDatabase.getInstance(application).projectDao())
-    private val vadEngine = OfflineSpeechVadEngine(application)
+    private val repository = ProjectRepository(AppDatabase.getDatabase(application).projectDao())
 
-    private val _currentProjectId = MutableStateFlow<String?>(null)
+    private val _uiState = MutableStateFlow(EditorUiState())
+    val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
 
-    private val _projectTitle = MutableStateFlow("Projeto Sem Título")
-    val projectTitle: StateFlow<String> = _projectTitle.asStateFlow()
-
-    private val _mediaItems = MutableStateFlow<List<MediaItemEntity>>(emptyList())
-    val mediaItems: StateFlow<List<MediaItemEntity>> = _mediaItems.asStateFlow()
-
-    private val _selectedItemIndex = MutableStateFlow(0)
-    val selectedItemIndex: StateFlow<Int> = _selectedItemIndex.asStateFlow()
-
-    // 20 Transitions
-    private val _transitionConfigs = MutableStateFlow(
-        TransitionType.entries.map { type ->
-            TransitionConfigItem(
-                type = type,
-                isActive = (type == TransitionType.CROSS_DISSOLVE || type == TransitionType.FADE || type == TransitionType.SLIDE_LEFT)
-            )
-        }
-    )
-    val transitionConfigs: StateFlow<List<TransitionConfigItem>> = _transitionConfigs.asStateFlow()
-
-    private val _transitionDuration = MutableStateFlow(1.0f)
-    val transitionDuration: StateFlow<Float> = _transitionDuration.asStateFlow()
-
-    // Audio narration
-    private val _audioUris = MutableStateFlow<List<Uri>>(emptyList())
-    val audioUris: StateFlow<List<Uri>> = _audioUris.asStateFlow()
-
-    private val _audioSegments = MutableStateFlow<List<AudioSegment>>(emptyList())
-    val audioSegments: StateFlow<List<AudioSegment>> = _audioSegments.asStateFlow()
-
-    private var narrationFile: File? = null
-
-    // Export Modal State
-    private val _exportOptions = MutableStateFlow(ExportOptions())
-    val exportOptions: StateFlow<ExportOptions> = _exportOptions.asStateFlow()
-
-    // Render Progress State from Service
-    val renderProgressState: StateFlow<RenderProgressState> = VideoRenderService.renderState
-
-    // Floating Red Arrow validation
-    val hasUnassignedAnimation: StateFlow<Boolean> = _mediaItems.map { items ->
-        items.any { it.mediaType == "IMAGE" && it.animationType == "NONE" }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    val firstUnassignedIndex: StateFlow<Int> = _mediaItems.map { items ->
-        items.indexOfFirst { it.mediaType == "IMAGE" && it.animationType == "NONE" }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
+    private var playbackJob: Job? = null
 
     fun loadProject(projectId: String) {
-        _currentProjectId.value = projectId
         viewModelScope.launch {
-            val projectWithMedia = repository.getProject(projectId)
-            if (projectWithMedia != null) {
-                _projectTitle.value = projectWithMedia.project.title
-                _mediaItems.value = projectWithMedia.mediaItems.sortedBy { it.orderIndex }
-                _transitionDuration.value = projectWithMedia.project.transitionDurationSeconds
+            var entity = repository.getProjectById(projectId)
+            if (entity == null) {
+                entity = ProjectEntity(id = projectId)
+                repository.saveProject(entity)
             }
+
+            var items = JsonUtil.deserializeMediaItems(entity.mediaItemsJson)
+            val tracks = JsonUtil.deserializeAudioTracks(entity.audioTracksJson)
+            val transitions = JsonUtil.deserializeTransitions(entity.selectedTransitionsJson)
+
+            val totalDuration = items.sumOf { it.durationMs }
+            val missingIdx = findFirstMissingAnimationIndex(items)
+            val ratio = try { AspectRatio.valueOf(entity.aspectRatioName) } catch (e: Exception) { AspectRatio.RATIO_9_16 }
+            val res = try { ExportResolution.valueOf(entity.exportResolutionName) } catch (e: Exception) { ExportResolution.RES_720P }
+
+            _uiState.update {
+                it.copy(
+                    project = entity,
+                    mediaItems = items,
+                    audioTracks = tracks,
+                    selectedTransitions = transitions,
+                    totalDurationMs = totalDuration,
+                    missingAnimationIndex = missingIdx,
+                    aspectRatio = ratio,
+                    exportConfig = ExportConfig(resolution = res, aspectRatio = ratio, fps = entity.exportFps)
+                )
+            }
+
+            saveCurrentState()
         }
     }
 
-    fun saveProjectDraft() {
-        val projectId = _currentProjectId.value ?: return
-        viewModelScope.launch {
-            val activeIds = _transitionConfigs.value.filter { it.isActive }.map { it.type.id }
-            val activeJson = activeIds.joinToString(prefix = "[", postfix = "]", separator = ",") { "\"$it\"" }
+    private fun findFirstMissingAnimationIndex(items: List<MediaItem>): Int {
+        return items.indexOfFirst { it.type == MediaType.IMAGE && it.motionAnimation == MotionAnimation.NONE }
+    }
 
-            val projectEntity = ProjectEntity(
-                id = projectId,
-                title = _projectTitle.value,
-                updatedAt = System.currentTimeMillis(),
-                thumbnailUri = _mediaItems.value.firstOrNull()?.uri,
-                mediaCount = _mediaItems.value.size,
-                totalDurationSeconds = _mediaItems.value.sumOf { it.durationSeconds },
-                activeTransitionsJson = activeJson,
-                transitionDurationSeconds = _transitionDuration.value,
-                isDraft = true
+    fun selectMedia(index: Int) {
+        if (index in _uiState.value.mediaItems.indices) {
+            _uiState.update { it.copy(selectedMediaIndex = index) }
+            val itemStartTime = _uiState.value.mediaItems.take(index).sumOf { it.durationMs }
+            seekTo(itemStartTime)
+        }
+    }
+
+    fun jumpToMissingAnimation() {
+        val missingIdx = _uiState.value.missingAnimationIndex
+        if (missingIdx >= 0) {
+            selectMedia(missingIdx)
+            setPanel(EditorPanel.ANIMATIONS)
+        }
+    }
+
+    fun setPanel(panel: EditorPanel) {
+        _uiState.update { it.copy(activePanel = panel) }
+    }
+
+    fun updateSelectedMediaMotion(motion: MotionAnimation) {
+        val idx = _uiState.value.selectedMediaIndex
+        val items = _uiState.value.mediaItems.toMutableList()
+        if (idx in items.indices) {
+            val updated = items[idx].copy(motionAnimation = motion)
+            items[idx] = updated
+            val missingIdx = findFirstMissingAnimationIndex(items)
+            _uiState.update {
+                it.copy(
+                    mediaItems = items,
+                    missingAnimationIndex = missingIdx
+                )
+            }
+            saveCurrentState()
+        }
+    }
+
+    fun updateSelectedMediaCamera(camera: CameraMotion) {
+        val idx = _uiState.value.selectedMediaIndex
+        val items = _uiState.value.mediaItems.toMutableList()
+        if (idx in items.indices) {
+            val updated = items[idx].copy(cameraMotion = camera)
+            items[idx] = updated
+            _uiState.update { it.copy(mediaItems = items) }
+            saveCurrentState()
+        }
+    }
+
+    fun updateSelectedMediaDuration(durationMs: Long) {
+        val idx = _uiState.value.selectedMediaIndex
+        val items = _uiState.value.mediaItems.toMutableList()
+        if (idx in items.indices) {
+            items[idx] = items[idx].copy(durationMs = durationMs)
+            val total = items.sumOf { it.durationMs }
+            _uiState.update { it.copy(mediaItems = items, totalDurationMs = total) }
+            saveCurrentState()
+        }
+    }
+
+    fun toggleTransitionSelection(effectId: String) {
+        val currentList = _uiState.value.selectedTransitions.toMutableList()
+        if (currentList.contains(effectId)) {
+            if (currentList.size > 1) { // Require at least 1 transition
+                currentList.remove(effectId)
+            } else {
+                showToast("É necessário manter pelo menos 1 transição selecionada!")
+            }
+        } else {
+            currentList.add(effectId)
+        }
+        _uiState.update { it.copy(selectedTransitions = currentList) }
+        saveCurrentState()
+    }
+
+    fun toggleMultiSelectTransitionsMode() {
+        _uiState.update { it.copy(isMultiSelectTransitions = !it.isMultiSelectTransitions) }
+    }
+
+    fun selectAllTransitions() {
+        val allIds = TransitionEffect.ALL_TRANSITIONS.map { it.id }
+        _uiState.update { it.copy(selectedTransitions = allIds) }
+        saveCurrentState()
+    }
+
+    fun addMediaUris(uris: List<Uri>, context: Context) {
+        val newItems = MediaHelper.processFileUris(context, uris)
+        if (newItems.isEmpty()) return
+        val currentItems = _uiState.value.mediaItems.toMutableList()
+        currentItems.addAll(newItems)
+        val total = currentItems.sumOf { it.durationMs }
+        val missingIdx = findFirstMissingAnimationIndex(currentItems)
+        _uiState.update {
+            it.copy(
+                mediaItems = currentItems,
+                totalDurationMs = total,
+                missingAnimationIndex = missingIdx
             )
-            repository.saveProject(projectEntity, _mediaItems.value)
         }
+        saveCurrentState()
     }
 
-    fun selectMediaItem(index: Int) {
-        if (index in _mediaItems.value.indices) {
-            _selectedItemIndex.value = index
+    fun addFolderUri(treeUri: Uri, context: Context) {
+        val newItems = MediaHelper.processFolderUri(context, treeUri)
+        if (newItems.isEmpty()) {
+            showToast("Nenhuma foto ou vídeo encontrado na pasta.")
+            return
         }
-    }
-
-    fun applyCameraAnimationToSelectedItem(animation: CameraAnimation) {
-        val index = _selectedItemIndex.value
-        val items = _mediaItems.value.toMutableList()
-        if (index in items.indices) {
-            val oldItem = items[index]
-            items[index] = oldItem.copy(animationType = animation.id)
-            _mediaItems.value = items
-            saveProjectDraft()
-        }
-    }
-
-    fun toggleTransitionActive(type: TransitionType) {
-        val updated = _transitionConfigs.value.map { item ->
-            if (item.type == type) item.copy(isActive = !item.isActive) else item
-        }
-        _transitionConfigs.value = updated
-        saveProjectDraft()
-    }
-
-    fun updateTransitionDuration(durationSec: Float) {
-        _transitionDuration.value = durationSec
-        saveProjectDraft()
-    }
-
-    fun addMediaItems(uris: List<Uri>) {
-        val projectId = _currentProjectId.value ?: return
-        val currentSize = _mediaItems.value.size
-        val newEntities = uris.mapIndexed { idx, uri ->
-            val uriStr = uri.toString()
-            val isVideo = uriStr.contains("video") || uriStr.endsWith(".mp4")
-            MediaItemEntity(
-                id = UUID.randomUUID().toString(),
-                projectId = projectId,
-                uri = uriStr,
-                mediaType = if (isVideo) "VIDEO" else "IMAGE",
-                durationSeconds = 3.0,
-                animationType = "NONE",
-                orderIndex = currentSize + idx
+        val currentItems = _uiState.value.mediaItems.toMutableList()
+        currentItems.addAll(newItems)
+        val total = currentItems.sumOf { it.durationMs }
+        val missingIdx = findFirstMissingAnimationIndex(currentItems)
+        _uiState.update {
+            it.copy(
+                mediaItems = currentItems,
+                totalDurationMs = total,
+                missingAnimationIndex = missingIdx
             )
         }
-        _mediaItems.value = _mediaItems.value + newEntities
-        saveProjectDraft()
+        saveCurrentState()
     }
 
     fun removeMediaItem(index: Int) {
-        val items = _mediaItems.value.toMutableList()
-        if (index in items.indices) {
-            items.removeAt(index)
-            val reordered = items.mapIndexed { i, item -> item.copy(orderIndex = i) }
-            _mediaItems.value = reordered
-            if (_selectedItemIndex.value >= reordered.size) {
-                _selectedItemIndex.value = (reordered.size - 1).coerceAtLeast(0)
+        val currentItems = _uiState.value.mediaItems.toMutableList()
+        if (index in currentItems.indices) {
+            currentItems.removeAt(index)
+            val newIdx = (index - 1).coerceAtLeast(0)
+            val total = currentItems.sumOf { it.durationMs }
+            val missingIdx = findFirstMissingAnimationIndex(currentItems)
+            _uiState.update {
+                it.copy(
+                    mediaItems = currentItems,
+                    selectedMediaIndex = newIdx,
+                    totalDurationMs = total,
+                    missingAnimationIndex = missingIdx
+                )
             }
-            saveProjectDraft()
+            saveCurrentState()
         }
     }
 
-    fun uploadAndProcessAudioFiles(uris: List<Uri>) {
-        if (uris.isEmpty()) return
-        _audioUris.value = _audioUris.value + uris
+    fun setAspectRatio(aspectRatio: AspectRatio) {
+        val updatedExport = _uiState.value.exportConfig.copy(aspectRatio = aspectRatio)
+        _uiState.update { it.copy(aspectRatio = aspectRatio, exportConfig = updatedExport) }
+        saveCurrentState()
+    }
 
+    fun updateExportConfig(resolution: ExportResolution, fps: Int) {
+        val updated = _uiState.value.exportConfig.copy(resolution = resolution, fps = fps)
+        _uiState.update { it.copy(exportConfig = updated) }
+        saveCurrentState()
+    }
+
+    fun autoSyncTimelineWithAudio() {
+        val audioTrack = _uiState.value.audioTracks.firstOrNull() ?: return
         viewModelScope.launch {
-            val concatenatedFile = vadEngine.concatenateAudioFiles(_audioUris.value)
-            narrationFile = concatenatedFile
-            val detectedSegments = vadEngine.analyzeAudioPhrasesAndPauses(concatenatedFile)
-            _audioSegments.value = detectedSegments
+            _uiState.update { it.copy(isAnalyzingAudio = true) }
+            val pauses = AudioSyncEngine.detectAudioPauses(getApplication(), audioTrack.uri)
+            val syncedItems = AudioSyncEngine.syncMediaToAudioPauses(_uiState.value.mediaItems, pauses)
+            val total = syncedItems.sumOf { it.durationMs }
 
-            // Auto-sync timeline durations with detected phrase timestamps
-            val syncedItems = vadEngine.syncTimelineWithAudio(_mediaItems.value, detectedSegments)
-            _mediaItems.value = syncedItems
-            saveProjectDraft()
+            _uiState.update {
+                it.copy(
+                    mediaItems = syncedItems,
+                    totalDurationMs = total,
+                    isAnalyzingAudio = false,
+                    toastMessage = "Linha do tempo sincronizada com as pausas do áudio!"
+                )
+            }
+            saveCurrentState()
         }
     }
 
-    fun updateExportOptions(resolution: ExportResolution, quality: ExportQuality, fps: ExportFps) {
-        _exportOptions.value = ExportOptions(resolution, quality, fps)
+    fun togglePlayPause() {
+        if (_uiState.value.isPlaying) {
+            pause()
+        } else {
+            play()
+        }
     }
 
-    fun startAutoEditing(context: Context, onValidationError: (String) -> Unit) {
-        val activeTransitions = _transitionConfigs.value.filter { it.isActive }.map { it.type }
-        if (activeTransitions.isEmpty()) {
-            onValidationError("Selecione pelo menos 1 transição ativa!")
-            return
-        }
-
-        if (_mediaItems.value.isEmpty()) {
-            onValidationError("Adicione pelo menos 1 imagem ou vídeo à timeline!")
-            return
-        }
-
-        // Auto assign random camera animation if user left any unassigned
-        val updatedItems = _mediaItems.value.map { item ->
-            if (item.mediaType == "IMAGE" && item.animationType == "NONE") {
-                val randomAnim = CameraAnimation.entries.filter { it != CameraAnimation.NONE }.random()
-                item.copy(animationType = randomAnim.id)
-            } else {
-                item
+    private fun play() {
+        playbackJob?.cancel()
+        _uiState.update { it.copy(isPlaying = true) }
+        playbackJob = viewModelScope.launch {
+            val fpsDelay = 33L // ~30 FPS
+            while (_uiState.value.isPlaying) {
+                delay(fpsDelay)
+                val newTime = _uiState.value.currentTimeMs + fpsDelay
+                if (newTime >= _uiState.value.totalDurationMs) {
+                    _uiState.update { it.copy(currentTimeMs = 0L, isPlaying = false) }
+                    break
+                } else {
+                    _uiState.update { it.copy(currentTimeMs = newTime) }
+                }
             }
         }
-        _mediaItems.value = updatedItems
-        saveProjectDraft()
-
-        val serviceIntent = Intent(context, VideoRenderService::class.java)
-        context.startForegroundService(serviceIntent)
-
-        // Bind to service and run render
-        val binder = VideoRenderService()
-        binder.startRenderTask(
-            mediaItems = _mediaItems.value,
-            activeTransitions = activeTransitions,
-            transitionDurationSec = _transitionDuration.value,
-            narrationAudioFile = narrationFile,
-            exportOptions = _exportOptions.value
-        )
     }
 
-    fun cancelRendering() {
-        val binder = VideoRenderService()
-        binder.cancelRendering()
+    fun pause() {
+        playbackJob?.cancel()
+        _uiState.update { it.copy(isPlaying = false) }
+    }
+
+    fun seekTo(timeMs: Long) {
+        val clamped = timeMs.coerceIn(0L, _uiState.value.totalDurationMs)
+        _uiState.update { it.copy(currentTimeMs = clamped) }
+    }
+
+    fun skipToStart() {
+        pause()
+        seekTo(0L)
+    }
+
+    fun showToast(msg: String) {
+        _uiState.update { it.copy(toastMessage = msg) }
+    }
+
+    fun clearToast() {
+        _uiState.update { it.copy(toastMessage = null) }
+    }
+
+    private fun saveCurrentState() {
+        val currentProj = _uiState.value.project ?: return
+        viewModelScope.launch {
+            val updatedEntity = currentProj.copy(
+                aspectRatioName = _uiState.value.aspectRatio.name,
+                exportResolutionName = _uiState.value.exportConfig.resolution.name,
+                exportFps = _uiState.value.exportConfig.fps,
+                mediaItemsJson = JsonUtil.serializeMediaItems(_uiState.value.mediaItems),
+                audioTracksJson = JsonUtil.serializeAudioTracks(_uiState.value.audioTracks),
+                selectedTransitionsJson = JsonUtil.serializeTransitions(_uiState.value.selectedTransitions)
+            )
+            repository.saveProject(updatedEntity)
+            _uiState.update { it.copy(project = updatedEntity) }
+        }
     }
 }
