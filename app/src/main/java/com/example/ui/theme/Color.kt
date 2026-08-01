@@ -2,13 +2,19 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val DarkBackground = Color(0xFF0D0E15)
-val DarkSurface = Color(0xFF161824)
-val DarkSurfaceVariant = Color(0xFF202334)
-val PrimaryPurple = Color(0xFF7C5CFC)
-val SecondaryCyan = Color(0xFF00E5FF)
-val AccentPink = Color(0xFFFF2A85)
-val WarningRed = Color(0xFFFF3366)
-val TextPrimary = Color(0xFFF1F2F6)
-val TextSecondary = Color(0xFFA0A5C0)
-val BorderDark = Color(0xFF2A2E45)
+val DarkCanvas = Color(0xFF121212)
+val DarkSurface = Color(0xFF1C1B1F)
+val DarkSurfaceVariant = Color(0xFF2B2930)
+
+val PrimaryPurple = Color(0xFFD0BCFF)
+val PrimaryPurpleText = Color(0xFF381E72)
+val PrimaryPurpleLight = Color(0xFFE8DEF8)
+val SecondaryMint = Color(0xFFCCC2DC)
+val AlertRed = Color(0xFFF2B8B5)
+
+val TextPrimary = Color(0xFFE6E1E5)
+val TextSecondary = Color(0xFFCAC4D0)
+val TextMuted = Color(0xFF938F96)
+
+val BorderLight = Color(0xFF49454F)
+val AccentGold = Color(0xFFEFB8C8)
