@@ -1,0 +1,75 @@
+name: Build e Assinar APK Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_zip:
+        description: 'Selecione ou envie o arquivo .zip com o código-fonte do projeto'
+        required: true
+        type: file
+
+jobs:
+  build:
+    name: Compilar e Assinar APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Configurar o ambiente Java/JDK 17
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 2. Descompactar o arquivo .zip fornecido no upload
+      - name: Descompactar Código-Fonte
+        run: |
+          mkdir project_source
+          unzip -q "${{ inputs.project_zip }}" -d project_source
+          cd project_source
+          # Ajustar permissão de execução do wrapper do Gradle
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+          else
+            echo "Erro: gradlew não encontrado na raiz do zip." && exit 1
+          fi
+
+      # 3. Compilar o APK Release usando Gradle
+      - name: Compilar APK (Release)
+        run: |
+          cd project_source
+          ./gradlew assembleRelease --no-daemon
+
+      # 4. Gerar Chave de Assinatura e Assinar o APK
+      - name: Assinar APK para Instalação no Android
+        run: |
+          cd project_source
+          
+          # Localizar o APK gerado
+          UNSIGNED_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "APK não encontrado na pasta de output!" && exit 1
+          fi
+          
+          echo "APK encontrado em: $UNSIGNED_APK"
+          
+          # Criar keystore temporária para assinatura
+          keytool -genkey -v -keystore release.keystore -alias androidkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=CineCut, OU=Dev, O=CineCut, L=City, S=State, C=BR"
+          
+          # Garantir o alinhamento de memória (zipalign)
+          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/34.0.0"
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$UNSIGNED_APK" app-aligned.apk
+          
+          # Assinar o APK (v1, v2 e v3 signatures)
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:android --key-pass pass:android --out CineCut-Signed.apk app-aligned.apk
+          
+          echo "APK assinado com sucesso!"
+
+      # 5. Upload do APK final assinado como Artefato
+      - name: Salvar APK nos Artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineCut-APK-Assinado
+          path: project_source/CineCut-Signed.apk
+          retention-days: 7
