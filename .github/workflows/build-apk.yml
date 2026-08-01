@@ -20,9 +20,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      # 3. Garantir permissões do Wrapper Gradle
-      - name: Conceder Permissão de Execução ao Gradle
-        run: chmod +x gradlew
+      # 3. Verificar/Gerar o Gradle Wrapper e Conceder Permissão
+      - name: Garantir Existência e Permissão do Gradle Wrapper
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "Arquivo 'gradlew' não encontrado. Gerando o Gradle Wrapper automaticamente..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
 
       # 4. Compilar o APK Release usando Gradle
       - name: Compilar APK (Release)
