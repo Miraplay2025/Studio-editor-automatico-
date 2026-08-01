@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 env:
-  # Força o Java e o Gradle a rodarem em modo Headless (sem interface gráfica/IntelliJ)
-  GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.daemon=false"
+  # Força o Java e o Gradle a rodarem em modo Headless e desativa o Configuration Cache
+  GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.daemon=false -Dorg.gradle.configuration-cache=false"
 
 jobs:
   build:
@@ -28,7 +28,7 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
-      # 4. Cache do Gradle para acelerar e estabilizar as builds
+      # 4. Cache do Gradle para acelerar a build
       - name: Configurar Cache do Gradle
         uses: actions/cache@v4
         with:
@@ -48,9 +48,9 @@ jobs:
           fi
           chmod +x gradlew
 
-      # 6. Compilar o APK Release usando Gradle
+      # 6. Limpar e Compilar o APK Release usando Gradle
       - name: Compilar APK (Release)
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew clean assembleRelease --no-daemon --no-configuration-cache --stacktrace
 
       # 7. Gerar Chave de Assinatura e Assinar o APK
       - name: Assinar APK para Instalação no Android
