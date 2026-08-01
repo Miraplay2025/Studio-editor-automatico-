@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 env:
-  # Força o Java e o Gradle a rodarem em modo Headless e desativa o Configuration Cache
-  GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.daemon=false -Dorg.gradle.configuration-cache=false"
+  # Configurações de performance, headless e memória da JVM/Gradle
+  GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.daemon=false -Dorg.gradle.configuration-cache=false -Xmx4096m -XX:MaxMetaspaceSize=1024m"
 
 jobs:
   build:
@@ -24,33 +24,25 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      # 3. Configurar o Android SDK e Build-Tools
+      # 3. Configurar o Android SDK e aceitar licenças automaticamente
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
-      # 4. Cache do Gradle para acelerar a build
-      - name: Configurar Cache do Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      # 5. Verificar/Gerar o Gradle Wrapper e Conceder Permissão
-      - name: Garantir Existência e Permissão do Gradle Wrapper
+      - name: Aceitar Licenças do Android SDK
         run: |
-          if [ ! -f "gradlew" ]; then
-            echo "Arquivo 'gradlew' não encontrado. Gerando o Gradle Wrapper automaticamente..."
-            gradle wrapper
-          fi
-          chmod +x gradlew
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
+
+      # 4. Configurar Gradle Action (gerencia cache e permissões automaticamente)
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # 5. Garantir Permissão de Execução no Gradle Wrapper
+      - name: Conceder Permissão ao Gradle Wrapper
+        run: chmod +x gradlew
 
       # 6. Limpar e Compilar o APK Release usando Gradle
       - name: Compilar APK (Release)
-        run: ./gradlew clean assembleRelease --no-daemon --no-configuration-cache --stacktrace
+        run: ./gradlew clean assembleRelease --no-daemon --stacktrace
 
       # 7. Gerar Chave de Assinatura e Assinar o APK
       - name: Assinar APK para Instalação no Android
@@ -59,7 +51,7 @@ jobs:
           UNSIGNED_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           
           if [ -z "$UNSIGNED_APK" ]; then
-            echo "APK não encontrado na pasta de output!" && exit 1
+            echo "Erro: APK não encontrado no diretório app/build/outputs/apk/release/" && exit 1
           fi
           
           echo "APK encontrado em: $UNSIGNED_APK"
