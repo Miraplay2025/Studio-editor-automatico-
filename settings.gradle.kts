@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "CineCut"
+rootProject.name = "Video Motion"
 
 include(":app")
