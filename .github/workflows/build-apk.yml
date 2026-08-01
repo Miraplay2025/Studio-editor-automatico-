@@ -3,6 +3,10 @@ name: Build e Assinar APK Android
 on:
   workflow_dispatch:
 
+env:
+  # Força o Java e o Gradle a rodarem em modo Headless (sem interface gráfica/IntelliJ)
+  GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.daemon=false"
+
 jobs:
   build:
     name: Compilar e Assinar APK
@@ -15,12 +19,27 @@ jobs:
 
       # 2. Configurar o ambiente Java/JDK 17
       - name: Configurar JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 3. Verificar/Gerar o Gradle Wrapper e Conceder Permissão
+      # 3. Configurar o Android SDK e Build-Tools
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 4. Cache do Gradle para acelerar e estabilizar as builds
+      - name: Configurar Cache do Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 5. Verificar/Gerar o Gradle Wrapper e Conceder Permissão
       - name: Garantir Existência e Permissão do Gradle Wrapper
         run: |
           if [ ! -f "gradlew" ]; then
@@ -29,11 +48,11 @@ jobs:
           fi
           chmod +x gradlew
 
-      # 4. Compilar o APK Release usando Gradle
+      # 6. Compilar o APK Release usando Gradle
       - name: Compilar APK (Release)
         run: ./gradlew assembleRelease --no-daemon
 
-      # 5. Gerar Chave de Assinatura e Assinar o APK
+      # 7. Gerar Chave de Assinatura e Assinar o APK
       - name: Assinar APK para Instalação no Android
         run: |
           # Localizar o APK gerado
@@ -48,8 +67,11 @@ jobs:
           # Criar keystore temporária para assinatura
           keytool -genkey -v -keystore release.keystore -alias androidkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=CineCut, OU=Dev, O=CineCut, L=City, S=State, C=BR"
           
+          # Encontrar dinamicamente a versão mais recente das Build-Tools instaladas
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+          echo "Utilizando Build-Tools localizadas em: $BUILD_TOOLS_DIR"
+          
           # Garantir o alinhamento de memória (zipalign)
-          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/34.0.0"
           $BUILD_TOOLS_DIR/zipalign -v -p 4 "$UNSIGNED_APK" app-aligned.apk
           
           # Assinar o APK (v1, v2 e v3 signatures)
@@ -57,7 +79,7 @@ jobs:
           
           echo "APK assinado com sucesso!"
 
-      # 6. Upload do APK final assinado como Artefato
+      # 8. Upload do APK final assinado como Artefato
       - name: Salvar APK nos Artefatos
         uses: actions/upload-artifact@v4
         with:
