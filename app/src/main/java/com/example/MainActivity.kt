@@ -33,6 +33,7 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.EditorScreen
 import com.example.ui.screens.ExportDialog
 import com.example.ui.screens.RenderProgressDialog
+import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.EditorViewModel
 import com.example.ui.viewmodel.ProjectViewModel
@@ -78,9 +79,19 @@ class MainActivity : ComponentActivity() {
 
                 NavHost(
                     navController = navController,
-                    startDestination = "dashboard",
+                    startDestination = "splash",
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    composable("splash") {
+                        SplashScreen(
+                            onSplashFinished = {
+                                navController.navigate("dashboard") {
+                                    popUpTo("splash") { inclusive = true }
+                                }
+                            }
+                        )
+                    }
+
                     composable("dashboard") {
                         DashboardScreen(
                             projects = projects,
