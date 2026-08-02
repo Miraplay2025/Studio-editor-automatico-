@@ -204,7 +204,9 @@ class VideoEncoderEngine(
             height: Int,
             mediaItems: List<MediaItem>,
             bitmapCache: Map<String, Bitmap>,
-            selectedTransitions: List<String>
+            selectedTransitions: List<String>,
+            context: Context? = null,
+            previewTransitionOverride: String? = null
         ) {
             canvas.drawColor(Color.BLACK)
             if (mediaItems.isEmpty()) return
@@ -230,7 +232,8 @@ class VideoEncoderEngine(
             }
 
             val currentItem = mediaItems[activeIndex]
-            val currentBitmap = bitmapCache[currentItem.id] ?: return
+            val currentBitmap = bitmapCache[currentItem.id]
+                ?: (if (context != null) loadAndScaleBitmap(context, currentItem.uri, width, height) else createFallbackBitmap(width, height))
 
             val transitionDurationMs = 800L
             val isNearEnd = timeInItemMs >= (currentItem.durationMs - transitionDurationMs) && activeIndex < mediaItems.lastIndex
@@ -238,16 +241,18 @@ class VideoEncoderEngine(
             if (isNearEnd) {
                 val nextItem = mediaItems[activeIndex + 1]
                 val nextBitmap = bitmapCache[nextItem.id]
+                    ?: (if (context != null) loadAndScaleBitmap(context, nextItem.uri, width, height) else currentBitmap)
                 val transitionProgress = (timeInItemMs - (currentItem.durationMs - transitionDurationMs)).toFloat() / transitionDurationMs
 
-                val transitionEffectId = currentItem.transitionOverride
+                val transitionEffectId = previewTransitionOverride
+                    ?: currentItem.transitionOverride
                     ?: selectedTransitions.getOrNull((activeIndex) % selectedTransitions.size.coerceAtLeast(1))
                     ?: "CROSSFADE"
 
                 drawTransitionBetween(
                     canvas = canvas,
                     bmp1 = currentBitmap,
-                    bmp2 = nextBitmap ?: currentBitmap,
+                    bmp2 = nextBitmap,
                     progress = transitionProgress.coerceIn(0f, 1f),
                     effectId = transitionEffectId,
                     width = width,
