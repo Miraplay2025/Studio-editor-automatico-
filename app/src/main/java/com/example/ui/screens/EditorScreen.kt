@@ -14,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
@@ -143,6 +145,15 @@ fun EditorScreen(
         }
     }
 
+    // Audio File Picker Launcher
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.addAudioUri(uri, context)
+        }
+    }
+
     // Smooth scroll timeline to missing animation index if requested
     LaunchedEffect(uiState.selectedMediaIndex) {
         if (uiState.selectedMediaIndex in uiState.mediaItems.indices) {
@@ -156,7 +167,7 @@ fun EditorScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = uiState.project?.title ?: "Editor de Vídeo",
+                        text = uiState.project?.title ?: "Video Motion",
                         color = TextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -203,106 +214,76 @@ fun EditorScreen(
                 onSelectAspectRatio = { viewModel.setAspectRatio(it) }
             )
 
-            // 2. Floating Red Arrow Missing Animation Indicator
-            if (uiState.missingAnimationIndex >= 0) {
+            Spacer(modifier = Modifier.weight(1f))
+
+            // 2. Bottom Panel Workflow (Requirement 2: Timeline HIDDEN on tool selection)
+            if (uiState.activePanel == EditorPanel.MAIN_CONTROLS) {
+                // Main Timeline View
+                TimelineSection(
+                    uiState = uiState,
+                    listState = timelineListState,
+                    onSelectMedia = { viewModel.selectMedia(it) },
+                    onRemoveMedia = { viewModel.removeMediaItem(it) },
+                    onAddMediaClick = { showImportOptionsDialog = true }
+                )
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .background(DarkSurface)
+                        .border(1.dp, Color(0xFF252838), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .padding(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(AlertRed.copy(alpha = 0.9f))
-                            .clickable { viewModel.jumpToMissingAnimation() }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Mídia #${uiState.missingAnimationIndex + 1} sem animação! Toque para corrigir.",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.Default.ArrowForward,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 3. Horizontal Timeline
-            TimelineSection(
-                uiState = uiState,
-                listState = timelineListState,
-                onSelectMedia = { viewModel.selectMedia(it) },
-                onRemoveMedia = { viewModel.removeMediaItem(it) },
-                onAddMediaClick = { showImportOptionsDialog = true }
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // 4. Dynamic Control Panel Area
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DarkSurface)
-                    .border(1.dp, Color(0xFF252838), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .padding(12.dp)
-            ) {
-                when (uiState.activePanel) {
-                    EditorPanel.MAIN_CONTROLS -> MainControlsPanel(
+                    MainControlsPanel(
                         uiState = uiState,
                         onOpenImport = { showImportOptionsDialog = true },
                         onOpenPanel = { viewModel.setPanel(it) }
                     )
-                    EditorPanel.ANIMATIONS -> AnimationsSubPanel(
-                        uiState = uiState,
-                        onSelectMotion = { viewModel.updateSelectedMediaMotion(it) },
-                        onUpdateDuration = { viewModel.updateSelectedMediaDuration(it) },
-                        onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                    )
-                    EditorPanel.CAMERA_ZOOM -> CameraSubPanel(
-                        uiState = uiState,
-                        onSelectCamera = { viewModel.updateSelectedMediaCamera(it) },
-                        onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                    )
-                    EditorPanel.TRANSITIONS -> TransitionsSubPanel(
-                        uiState = uiState,
-                        onToggleTransition = { viewModel.toggleTransitionSelection(it) },
-                        onToggleMultiSelect = { viewModel.toggleMultiSelectTransitionsMode() },
-                        onSelectAll = { viewModel.selectAllTransitions() },
-                        onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                    )
-                    EditorPanel.AUDIO_SYNC -> AudioSubPanel(
-                        uiState = uiState,
-                        onAutoSync = { viewModel.autoSyncTimelineWithAudio() },
-                        onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                    )
-                    EditorPanel.ASPECT_RATIO -> AspectRatioSubPanel(
-                        uiState = uiState,
-                        onSelectRatio = { viewModel.setAspectRatio(it) },
-                        onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                    )
-                    EditorPanel.EXPORT_SETTINGS -> { /* Opened via dialog */ }
+                }
+            } else {
+                // Tool Sub-Panel occupies the bottom panel area (Timeline is HIDDEN)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DarkSurface)
+                        .border(1.dp, Color(0xFF252838), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .padding(16.dp)
+                ) {
+                    when (uiState.activePanel) {
+                        EditorPanel.ANIMATIONS -> AnimationsSubPanel(
+                            uiState = uiState,
+                            onSelectMotion = { viewModel.updateSelectedMediaMotion(it) },
+                            onUpdateDuration = { viewModel.updateSelectedMediaDuration(it) },
+                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
+                        )
+                        EditorPanel.CAMERA_ZOOM -> CameraSubPanel(
+                            uiState = uiState,
+                            onSelectCamera = { viewModel.updateSelectedMediaCamera(it) },
+                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
+                        )
+                        EditorPanel.TRANSITIONS -> TransitionsSubPanel(
+                            uiState = uiState,
+                            onPreviewTransition = { viewModel.previewTransition(it) },
+                            onApplyTransition = { viewModel.applyPreviewTransition(it) },
+                            onToggleMultiSelect = { viewModel.toggleMultiSelectTransitionsMode() },
+                            onSelectAll = { viewModel.selectAllTransitions() },
+                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
+                        )
+                        EditorPanel.AUDIO_SYNC -> AudioSubPanel(
+                            uiState = uiState,
+                            onPickAudio = { audioPickerLauncher.launch("audio/*") },
+                            onRemoveAudio = { viewModel.removeAudioTrack(it) },
+                            onAutoSync = { viewModel.autoSyncTimelineWithAudio() },
+                            onTogglePlay = { viewModel.togglePlayPause() },
+                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
+                        )
+                        EditorPanel.ASPECT_RATIO -> AspectRatioSubPanel(
+                            uiState = uiState,
+                            onSelectRatio = { viewModel.setAspectRatio(it) },
+                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
+                        )
+                        else -> {}
+                    }
                 }
             }
         }
@@ -464,19 +445,35 @@ fun PreviewPlayerArea(
             contentAlignment = Alignment.Center
         ) {
             val context = LocalContext.current
-            val (targetW, targetH) = uiState.exportConfig.resolution.getDimensions(uiState.aspectRatio)
+            var previewBitmapCache by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
+
+            LaunchedEffect(uiState.mediaItems) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val newCache = mutableMapOf<String, android.graphics.Bitmap>()
+                    uiState.mediaItems.forEach { item ->
+                        try {
+                            val bmp = VideoEncoderEngine.loadAndScaleBitmap(context, item.uri, 720, 1280)
+                            newCache[item.id] = bmp
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    previewBitmapCache = newCache
+                }
+            }
 
             // Render active Canvas frame
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val bitmapCache = mapOf<String, android.graphics.Bitmap>()
                 VideoEncoderEngine.drawCompositionFrame(
                     canvas = drawContext.canvas.nativeCanvas,
                     currentTimeMs = uiState.currentTimeMs,
                     width = size.width.toInt(),
                     height = size.height.toInt(),
                     mediaItems = uiState.mediaItems,
-                    bitmapCache = emptyMap(),
-                    selectedTransitions = uiState.selectedTransitions
+                    bitmapCache = previewBitmapCache,
+                    selectedTransitions = uiState.selectedTransitions,
+                    context = context,
+                    previewTransitionOverride = uiState.previewTransitionEffectId
                 )
             }
 
@@ -815,20 +812,43 @@ fun SubPanelHeader(title: String, onDone: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp),
+            .padding(bottom = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onDone,
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(DarkSurfaceVariant)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Voltar para Linha do Tempo",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = title,
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
         Button(
             onClick = onDone,
             colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = PrimaryPurpleText),
             shape = RoundedCornerShape(16.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
         ) {
             Icon(Icons.Default.Check, contentDescription = "Concluído", tint = PrimaryPurpleText, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(4.dp))
-            Text("Voltar", color = PrimaryPurpleText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Concluído", color = PrimaryPurpleText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -923,13 +943,16 @@ fun CameraSubPanel(
 @Composable
 fun TransitionsSubPanel(
     uiState: EditorUiState,
-    onToggleTransition: (String) -> Unit,
+    onPreviewTransition: (String) -> Unit,
+    onApplyTransition: (String) -> Unit,
     onToggleMultiSelect: () -> Unit,
     onSelectAll: () -> Unit,
     onDone: () -> Unit
 ) {
+    var selectedForApply by remember { mutableStateOf(uiState.previewTransitionEffectId ?: uiState.selectedTransitions.firstOrNull() ?: "CROSSFADE") }
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Efeitos de Transição (20 Opções Suaves)", onDone = onDone)
+        SubPanelHeader(title = "Efeitos de Transição (Testar ao Vivo)", onDone = onDone)
 
         Row(
             modifier = Modifier
@@ -938,22 +961,21 @@ fun TransitionsSubPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = onToggleMultiSelect,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (uiState.isMultiSelectTransitions) SecondaryMint else DarkSurfaceVariant
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = if (uiState.isMultiSelectTransitions) "Multi-Seleção Ativa" else "Selecionar Transições",
-                    color = if (uiState.isMultiSelectTransitions) Color.Black else TextPrimary,
-                    fontSize = 11.sp
-                )
-            }
+            Text(
+                text = "Toque em qualquer efeito para testar a prévia ao vivo:",
+                color = TextMuted,
+                fontSize = 11.sp
+            )
 
-            TextButton(onClick = onSelectAll) {
-                Text("Selecionar Todas (${TransitionEffect.ALL_TRANSITIONS.size})", color = PrimaryPurple, fontSize = 11.sp)
+            Button(
+                onClick = { onApplyTransition(selectedForApply) },
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = PrimaryPurpleText),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryPurpleText, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Aplicar Transição", color = PrimaryPurpleText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -962,14 +984,23 @@ fun TransitionsSubPanel(
             modifier = Modifier.fillMaxWidth()
         ) {
             itemsIndexed(TransitionEffect.ALL_TRANSITIONS) { _, effect ->
-                val isSelected = uiState.selectedTransitions.contains(effect.id)
+                val isPreviewing = uiState.previewTransitionEffectId == effect.id
+                val isApplied = uiState.selectedTransitions.contains(effect.id) || selectedForApply == effect.id
+
                 Box(
                     modifier = Modifier
-                        .width(110.dp)
+                        .width(115.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) PrimaryPurple.copy(alpha = 0.3f) else DarkSurfaceVariant)
-                        .border(1.dp, if (isSelected) PrimaryPurple else Color.Transparent, RoundedCornerShape(12.dp))
-                        .clickable { onToggleTransition(effect.id) }
+                        .background(if (isPreviewing) PrimaryPurple.copy(alpha = 0.4f) else DarkSurfaceVariant)
+                        .border(
+                            1.dp,
+                            if (isPreviewing || isApplied) PrimaryPurple else Color.Transparent,
+                            RoundedCornerShape(12.dp)
+                        )
+                        .clickable {
+                            selectedForApply = effect.id
+                            onPreviewTransition(effect.id)
+                        }
                         .padding(8.dp)
                 ) {
                     Column {
@@ -979,7 +1010,7 @@ fun TransitionsSubPanel(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(effect.name, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            if (isSelected) {
+                            if (isPreviewing || isApplied) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(14.dp))
                             }
                         }
@@ -995,19 +1026,83 @@ fun TransitionsSubPanel(
 @Composable
 fun AudioSubPanel(
     uiState: EditorUiState,
+    onPickAudio: () -> Unit,
+    onRemoveAudio: (Int) -> Unit,
     onAutoSync: () -> Unit,
+    onTogglePlay: () -> Unit,
     onDone: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Trilha Sonora & Sincronização por Pausas", onDone = onDone)
+        SubPanelHeader(title = "Gerenciamento de Áudio & Sincronização", onDone = onDone)
 
-        Text(
-            text = "O motor analisa a faixa de áudio e detecta pausas de fala e silêncio para ajustar automaticamente o tempo de cada mídia na linha do tempo.",
-            color = TextSecondary,
-            fontSize = 11.sp
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onPickAudio,
+                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = TextPrimary),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Default.MusicNote, contentDescription = null, tint = SecondaryMint, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Upload Áudio", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onTogglePlay,
+                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = TextPrimary),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = PrimaryPurple,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (uiState.isPlaying) "Pausar Prévia" else "Ouvir Prévia",
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        if (uiState.audioTracks.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            val track = uiState.audioTracks.first()
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = SecondaryMint, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(track.name, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text("Trilha ativa (${track.detectedPausesMs.size} pausas detectadas)", color = TextMuted, fontSize = 10.sp)
+                        }
+                    }
+                    IconButton(onClick = { onRemoveAudio(0) }) {
+                        Icon(Icons.Default.Close, contentDescription = "Remover", tint = AlertRed, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         Button(
             onClick = onAutoSync,
