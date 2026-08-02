@@ -45,6 +45,7 @@ data class EditorUiState(
     val mediaItems: List<MediaItem> = emptyList(),
     val audioTracks: List<AudioTrack> = emptyList(),
     val selectedTransitions: List<String> = listOf("CROSSFADE", "SLIDE_LEFT", "SLIDE_RIGHT"),
+    val previewTransitionEffectId: String? = null,
     val activePanel: EditorPanel = EditorPanel.MAIN_CONTROLS,
     val selectedMediaIndex: Int = 0,
     val isPlaying: Boolean = false,
@@ -129,7 +130,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val idx = _uiState.value.selectedMediaIndex
         val items = _uiState.value.mediaItems.toMutableList()
         if (idx in items.indices) {
-            val updated = items[idx].copy(motionAnimation = motion)
+            val currentMotion = items[idx].motionAnimation
+            val newMotion = if (currentMotion == motion) MotionAnimation.NONE else motion
+            val updated = items[idx].copy(motionAnimation = newMotion)
             items[idx] = updated
             val missingIdx = findFirstMissingAnimationIndex(items)
             _uiState.update {
@@ -146,7 +149,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val idx = _uiState.value.selectedMediaIndex
         val items = _uiState.value.mediaItems.toMutableList()
         if (idx in items.indices) {
-            val updated = items[idx].copy(cameraMotion = camera)
+            val currentCamera = items[idx].cameraMotion
+            val newCamera = if (currentCamera == camera) CameraMotion.NONE else camera
+            val updated = items[idx].copy(cameraMotion = newCamera)
             items[idx] = updated
             _uiState.update { it.copy(mediaItems = items) }
             saveCurrentState()
@@ -164,19 +169,47 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun toggleTransitionSelection(effectId: String) {
-        val currentList = _uiState.value.selectedTransitions.toMutableList()
-        if (currentList.contains(effectId)) {
-            if (currentList.size > 1) { // Require at least 1 transition
-                currentList.remove(effectId)
-            } else {
-                showToast("É necessário manter pelo menos 1 transição selecionada!")
-            }
+    fun previewTransition(effectId: String) {
+        val idx = _uiState.value.selectedMediaIndex
+        val items = _uiState.value.mediaItems
+        val transitionTime = if (items.isNotEmpty() && idx in items.indices) {
+            val startTime = items.take(idx).sumOf { it.durationMs }
+            val itemDuration = items[idx].durationMs
+            (startTime + itemDuration - 600L).coerceAtLeast(0L)
         } else {
-            currentList.add(effectId)
+            0L
         }
-        _uiState.update { it.copy(selectedTransitions = currentList) }
+
+        _uiState.update { it.copy(previewTransitionEffectId = effectId) }
+        seekTo(transitionTime)
+        play()
+    }
+
+    fun applyPreviewTransition(effectId: String? = null) {
+        val targetEffect = effectId ?: _uiState.value.previewTransitionEffectId ?: return
+        val currentList = _uiState.value.selectedTransitions.toMutableList()
+        if (!currentList.contains(targetEffect)) {
+            currentList.add(targetEffect)
+        }
+        val idx = _uiState.value.selectedMediaIndex
+        val items = _uiState.value.mediaItems.toMutableList()
+        if (idx in items.indices) {
+            items[idx] = items[idx].copy(transitionOverride = targetEffect)
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedTransitions = currentList,
+                mediaItems = items,
+                previewTransitionEffectId = null,
+                toastMessage = "Transição '${targetEffect}' aplicada com sucesso!"
+            )
+        }
         saveCurrentState()
+    }
+
+    fun toggleTransitionSelection(effectId: String) {
+        previewTransition(effectId)
     }
 
     fun toggleMultiSelectTransitionsMode() {
@@ -187,6 +220,27 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val allIds = TransitionEffect.ALL_TRANSITIONS.map { it.id }
         _uiState.update { it.copy(selectedTransitions = allIds) }
         saveCurrentState()
+    }
+
+    fun addAudioUri(uri: Uri, context: Context) {
+        val trackName = uri.lastPathSegment?.takeLast(25) ?: "Trilha Sonora"
+        val newTrack = AudioTrack(
+            id = java.util.UUID.randomUUID().toString(),
+            uri = uri.toString(),
+            name = trackName
+        )
+        val updatedTracks = listOf(newTrack)
+        _uiState.update { it.copy(audioTracks = updatedTracks, toastMessage = "Trilha sonora adicionada!") }
+        saveCurrentState()
+    }
+
+    fun removeAudioTrack(index: Int) {
+        val tracks = _uiState.value.audioTracks.toMutableList()
+        if (index in tracks.indices) {
+            tracks.removeAt(index)
+            _uiState.update { it.copy(audioTracks = tracks) }
+            saveCurrentState()
+        }
     }
 
     fun addMediaUris(uris: List<Uri>, context: Context) {
