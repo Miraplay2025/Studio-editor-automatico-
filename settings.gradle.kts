@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Video Motion"
+rootProject.name = "Editor de Vídeo"
 
 include(":app")
