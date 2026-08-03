@@ -1,6 +1,6 @@
 {
-  "name": "Video Motion Editor",
-  "description": "Android native video & image motion editor with dual-layer animations, pan & zoom, transitions, audio sync, and background rendering.",
+  "name": "Editor de Vídeo",
+  "description": "Editor de vídeo automático e manual com transições, animações de câmera, sincronização de áudio e renderização nativa.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
