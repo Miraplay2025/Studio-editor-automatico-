@@ -4,13 +4,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,1136 +26,602 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Animation
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Transform
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.example.data.models.AspectRatio
-import com.example.data.models.CameraMotion
-import com.example.data.models.MediaItem
-import com.example.data.models.MediaType
-import com.example.data.models.MotionAnimation
-import com.example.data.models.TransitionEffect
-import com.example.engine.VideoEncoderEngine
-import com.example.ui.theme.AlertRed
-import com.example.ui.theme.BorderLight
-import com.example.ui.theme.DarkCanvas
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.PrimaryPurple
-import com.example.ui.theme.PrimaryPurpleText
-import com.example.ui.theme.SecondaryMint
-import com.example.ui.theme.TextMuted
-import com.example.ui.theme.TextPrimary
-import com.example.ui.theme.TextSecondary
-import com.example.ui.viewmodel.EditorPanel
-import com.example.ui.viewmodel.EditorUiState
-import com.example.ui.viewmodel.EditorViewModel
+import com.example.data.ActiveSubMenu
+import com.example.data.AspectRatioOption
+import com.example.data.CameraAnimation
+import com.example.data.MediaClip
+import com.example.data.ZoomAnimation
+import com.example.ui.MainViewModel
+import com.example.ui.components.AnimationSubMenu
+import com.example.ui.components.AudioSubMenu
+import com.example.ui.components.AutoEditModal
+import com.example.ui.components.ExportModal
+import com.example.ui.components.RatioSubMenu
+import com.example.ui.components.TransitionSubMenu
+import com.example.ui.components.ZoomSubMenu
+import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
-    viewModel: EditorViewModel,
-    uiState: EditorUiState,
-    onBack: () -> Unit,
-    onOpenExportDialog: () -> Unit
+    viewModel: MainViewModel,
+    onNavigateBack: () -> Unit
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val timelineListState = rememberLazyListState()
-    var showImportOptionsDialog by remember { mutableStateOf(false) }
+    val projectTitle by viewModel.projectTitle.collectAsStateWithLifecycle()
+    val mediaClips by viewModel.mediaClips.collectAsStateWithLifecycle()
+    val selectedClipId by viewModel.selectedClipId.collectAsStateWithLifecycle()
+    val aspectRatio by viewModel.aspectRatio.collectAsStateWithLifecycle()
+    val selectedTransitionsPool by viewModel.selectedTransitions.collectAsStateWithLifecycle()
+    val isSelectionModeActive by viewModel.isTransitionSelectionMode.collectAsStateWithLifecycle()
+    val audioTrack by viewModel.audioTrack.collectAsStateWithLifecycle()
+    val isAnalyzingAudio by viewModel.isAnalyzingAudio.collectAsStateWithLifecycle()
+    val renderState by viewModel.renderState.collectAsStateWithLifecycle()
+    val showAutoEditModal by viewModel.showAutoEditModal.collectAsStateWithLifecycle()
+    val showExportModal by viewModel.showExportModal.collectAsStateWithLifecycle()
+    val exportResolution by viewModel.exportResolution.collectAsStateWithLifecycle()
+    val exportQuality by viewModel.exportQuality.collectAsStateWithLifecycle()
+    val exportFps by viewModel.exportFps.collectAsStateWithLifecycle()
+    val lastExportedFile by viewModel.lastExportedFile.collectAsStateWithLifecycle()
 
-    // Gallery Files Picker Launcher
+    var activeSubMenu by remember { mutableStateOf(ActiveSubMenu.NONE) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentPlaybackSec by remember { mutableFloatStateOf(0f) }
+
+    val totalDurationSec = remember(mediaClips) {
+        mediaClips.sumOf { it.durationSec.toDouble() }.toFloat()
+    }
+
+    val selectedClip = remember(mediaClips, selectedClipId) {
+        mediaClips.find { it.id == selectedClipId } ?: mediaClips.firstOrNull()
+    }
+
+    // Media Picker launcher for multiple images & videos
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris ->
+    ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
-            viewModel.addMediaUris(uris, context)
+            viewModel.addMediaUris(uris)
         }
     }
 
-    // Directory Folder Picker Launcher
-    val folderPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri ->
-        if (treeUri != null) {
-            viewModel.addFolderUri(treeUri, context)
-        }
-    }
-
-    // Audio File Picker Launcher
+    // Audio Picker launcher
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.addAudioUri(uri, context)
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.setAudioTrack(it.toString(), "Narração Gravação Audio")
         }
     }
 
-    // Smooth scroll timeline to missing animation index if requested
-    LaunchedEffect(uiState.selectedMediaIndex) {
-        if (uiState.selectedMediaIndex in uiState.mediaItems.indices) {
-            timelineListState.animateScrollToItem(uiState.selectedMediaIndex)
+    // Playback ticker simulation for live player preview
+    LaunchedEffect(isPlaying, totalDurationSec) {
+        if (isPlaying && totalDurationSec > 0f) {
+            while (isPlaying) {
+                delay(50)
+                currentPlaybackSec += 0.05f
+                if (currentPlaybackSec >= totalDurationSec) {
+                    currentPlaybackSec = 0f
+                    isPlaying = false
+                }
+            }
         }
     }
 
     Scaffold(
-        containerColor = DarkCanvas,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = uiState.project?.title ?: "Video Motion",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Voltar",
-                            tint = TextPrimary
-                        )
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = onOpenExportDialog,
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = PrimaryPurpleText),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier
-                            .testTag("export_video_button")
-                            .padding(end = 8.dp)
-                    ) {
-                        Text("Exportar", color = PrimaryPurpleText, fontWeight = FontWeight.Bold)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
-            )
-        }
+        containerColor = Color(0xFF0D0E17)
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 1. Upper Preview Player Area
-            PreviewPlayerArea(
-                uiState = uiState,
-                onTogglePlayPause = { viewModel.togglePlayPause() },
-                onSeek = { viewModel.seekTo(it) },
-                onSkipToStart = { viewModel.skipToStart() },
-                onSelectAspectRatio = { viewModel.setAspectRatio(it) }
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // 2. Bottom Panel Workflow (Requirement 2: Timeline HIDDEN on tool selection)
-            if (uiState.activePanel == EditorPanel.MAIN_CONTROLS) {
-                // Main Timeline View
-                TimelineSection(
-                    uiState = uiState,
-                    listState = timelineListState,
-                    onSelectMedia = { viewModel.selectMedia(it) },
-                    onRemoveMedia = { viewModel.removeMediaItem(it) },
-                    onAddMediaClick = { showImportOptionsDialog = true }
-                )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(DarkSurface)
-                        .border(1.dp, Color(0xFF252838), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                        .padding(12.dp)
-                ) {
-                    MainControlsPanel(
-                        uiState = uiState,
-                        onOpenImport = { showImportOptionsDialog = true },
-                        onOpenPanel = { viewModel.setPanel(it) }
-                    )
-                }
-            } else {
-                // Tool Sub-Panel occupies the bottom panel area (Timeline is HIDDEN)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(DarkSurface)
-                        .border(1.dp, Color(0xFF252838), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                        .padding(16.dp)
-                ) {
-                    when (uiState.activePanel) {
-                        EditorPanel.ANIMATIONS -> AnimationsSubPanel(
-                            uiState = uiState,
-                            onSelectMotion = { viewModel.updateSelectedMediaMotion(it) },
-                            onUpdateDuration = { viewModel.updateSelectedMediaDuration(it) },
-                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                        )
-                        EditorPanel.CAMERA_ZOOM -> CameraSubPanel(
-                            uiState = uiState,
-                            onSelectCamera = { viewModel.updateSelectedMediaCamera(it) },
-                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                        )
-                        EditorPanel.TRANSITIONS -> TransitionsSubPanel(
-                            uiState = uiState,
-                            onPreviewTransition = { viewModel.previewTransition(it) },
-                            onApplyTransition = { viewModel.applyPreviewTransition(it) },
-                            onToggleMultiSelect = { viewModel.toggleMultiSelectTransitionsMode() },
-                            onSelectAll = { viewModel.selectAllTransitions() },
-                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                        )
-                        EditorPanel.AUDIO_SYNC -> AudioSubPanel(
-                            uiState = uiState,
-                            onPickAudio = { audioPickerLauncher.launch("audio/*") },
-                            onRemoveAudio = { viewModel.removeAudioTrack(it) },
-                            onAutoSync = { viewModel.autoSyncTimelineWithAudio() },
-                            onTogglePlay = { viewModel.togglePlayPause() },
-                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                        )
-                        EditorPanel.ASPECT_RATIO -> AspectRatioSubPanel(
-                            uiState = uiState,
-                            onSelectRatio = { viewModel.setAspectRatio(it) },
-                            onDone = { viewModel.setPanel(EditorPanel.MAIN_CONTROLS) }
-                        )
-                        else -> {}
-                    }
-                }
-            }
-        }
-    }
-
-    if (showImportOptionsDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportOptionsDialog = false },
-            title = {
-                Text(
-                    text = "Adicionar Mídia",
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    fontSize = 18.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showImportOptionsDialog = false
-                                mediaPickerLauncher.launch("*/*")
-                            },
-                        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(PrimaryPurple.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PhotoLibrary,
-                                    contentDescription = null,
-                                    tint = PrimaryPurple
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Fotos e Vídeos da Galeria", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("Selecione múltiplos arquivos", color = TextMuted, fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showImportOptionsDialog = false
-                                folderPickerLauncher.launch(null)
-                            },
-                        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(SecondaryMint.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = SecondaryMint
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Pasta / Diretório Completo", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("Importar todas as mídias da pasta", color = TextMuted, fontSize = 11.sp)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showImportOptionsDialog = false }) {
-                    Text("Cancelar", color = TextSecondary)
-                }
-            },
-            containerColor = DarkSurface,
-            titleContentColor = TextPrimary,
-            textContentColor = TextSecondary
-        )
-    }
-}
-
-@Composable
-fun PreviewPlayerArea(
-    uiState: EditorUiState,
-    onTogglePlayPause: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onSkipToStart: () -> Unit,
-    onSelectAspectRatio: (AspectRatio) -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(DarkCanvas)
-            .padding(8.dp)
-    ) {
-        // Aspect Ratio Selector Pills
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            AspectRatio.entries.forEach { ratio ->
-                val isSelected = ratio == uiState.aspectRatio
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isSelected) PrimaryPurple else DarkSurfaceVariant)
-                        .clickable { onSelectAspectRatio(ratio) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = ratio.label,
-                        color = if (isSelected) Color.White else TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Responsive Video Canvas Container
-        val aspectVal = when (uiState.aspectRatio) {
-            AspectRatio.RATIO_9_16 -> 9f / 16f
-            AspectRatio.RATIO_16_9 -> 16f / 9f
-            AspectRatio.RATIO_1_1 -> 1f
-        }
-
-        Box(
-            modifier = Modifier
-                .height(260.dp)
-                .aspectRatio(aspectVal)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black)
-                .border(1.dp, Color(0xFF2B2E42), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            val context = LocalContext.current
-            var previewBitmapCache by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
-
-            LaunchedEffect(uiState.mediaItems) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val newCache = mutableMapOf<String, android.graphics.Bitmap>()
-                    uiState.mediaItems.forEach { item ->
-                        try {
-                            val bmp = VideoEncoderEngine.loadAndScaleBitmap(context, item.uri, 720, 1280)
-                            newCache[item.id] = bmp
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                    previewBitmapCache = newCache
-                }
-            }
-
-            // Render active Canvas frame
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                VideoEncoderEngine.drawCompositionFrame(
-                    canvas = drawContext.canvas.nativeCanvas,
-                    currentTimeMs = uiState.currentTimeMs,
-                    width = size.width.toInt(),
-                    height = size.height.toInt(),
-                    mediaItems = uiState.mediaItems,
-                    bitmapCache = previewBitmapCache,
-                    selectedTransitions = uiState.selectedTransitions,
-                    context = context,
-                    previewTransitionOverride = uiState.previewTransitionEffectId
-                )
-            }
-
-            if (uiState.mediaItems.isEmpty()) {
-                Text("Sem mídias na linha do tempo", color = TextMuted, fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Playback Controls Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onSkipToStart) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Início", tint = TextPrimary)
-            }
-
-            IconButton(
-                onClick = onTogglePlayPause,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(PrimaryPurple)
-            ) {
-                Icon(
-                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = "Play/Pause",
-                    tint = Color.White
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Slider(
-                value = uiState.currentTimeMs.toFloat(),
-                onValueChange = { onSeek(it.toLong()) },
-                valueRange = 0f..uiState.totalDurationMs.coerceAtLeast(1000L).toFloat(),
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = PrimaryPurple,
-                    activeTrackColor = PrimaryPurple,
-                    inactiveTrackColor = DarkSurfaceVariant
-                )
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            val currentSec = (uiState.currentTimeMs / 1000)
-            val totalSec = (uiState.totalDurationMs / 1000)
-            Text(
-                text = String.format("%02d:%02d / %02d:%02d", currentSec / 60, currentSec % 60, totalSec / 60, totalSec % 60),
-                color = TextSecondary,
-                fontSize = 10.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-            )
-        }
-    }
-}
-
-@Composable
-fun TimelineSection(
-    uiState: EditorUiState,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    onSelectMedia: (Int) -> Unit,
-    onRemoveMedia: (Int) -> Unit,
-    onAddMediaClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(DarkSurfaceVariant)
-            .padding(vertical = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Linha do Tempo (${uiState.mediaItems.size} mídias)",
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Selecione uma foto para editar animações",
-                color = TextMuted,
-                fontSize = 10.sp
-            )
-        }
-
-        LazyRow(
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-            itemsIndexed(uiState.mediaItems) { index, item ->
-                val isSelected = index == uiState.selectedMediaIndex
-                val isMissingAnim = item.type == MediaType.IMAGE && item.motionAnimation == MotionAnimation.NONE
-
-                Box(
-                    modifier = Modifier
-                        .width(90.dp)
-                        .height(110.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkSurface)
-                        .border(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) PrimaryPurple else if (isMissingAnim) AlertRed else Color.Transparent,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .clickable { onSelectMedia(index) }
-                        .padding(4.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(64.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.Black)
-                        ) {
-                            AsyncImage(
-                                model = item.uri,
-                                contentDescription = item.title,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-
-                            // Missing animation warning badge
-                            if (isMissingAnim) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(4.dp)
-                                        .background(AlertRed, CircleShape)
-                                        .padding(3.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = "Sem Animação",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                }
-                            }
-
-                            // Delete item button
-                            IconButton(
-                                onClick = { onRemoveMedia(index) },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(22.dp)
-                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Remover",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = item.motionAnimation.displayName,
-                            color = if (isMissingAnim) AlertRed else TextSecondary,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
-                        Text(
-                            text = "${item.durationMs / 1000f}s",
-                            color = TextMuted,
-                            fontSize = 9.sp
-                        )
-                    }
-                }
-            }
-
-            item {
-                Box(
-                    modifier = Modifier
-                        .width(80.dp)
-                        .height(110.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkSurface)
-                        .border(1.dp, BorderLight, RoundedCornerShape(12.dp))
-                        .clickable(onClick = onAddMediaClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = PrimaryPurple)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Adicionar", color = TextSecondary, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
-
-        // Audio Track Bar
-        if (uiState.audioTracks.isNotEmpty()) {
-            val audio = uiState.audioTracks.first()
+            // 1. TOP BAR: Back Arrow (Autosaves Draft) + Iniciar Edição Automática
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(PrimaryPurple.copy(alpha = 0.2f))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .background(Color(0xFF141624))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            viewModel.saveCurrentProjectDraft()
+                            onNavigateBack()
+                        },
+                        modifier = Modifier.testTag("back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar e Salvar Rascunho",
+                            tint = Color.White
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Text(
+                        text = projectTitle,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+
+                Button(
+                    onClick = { viewModel.startAutoEditing() },
+                    modifier = Modifier
+                        .height(38.dp)
+                        .testTag("start_auto_edit_button"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE)),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Iniciar Edição Automática",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            // 2. PLAYER DE VÍDEO CENTRALIZADO COM CONTROLES & SELETOR DE PROPORÇÃO
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(Color.Black)
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // Ratio Container Frame
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .aspectRatio(aspectRatio.ratio)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF1A1C2C))
+                            .border(1.dp, Color(0xFF323755), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selectedClip != null) {
+                            // Live visual preview applying Camera & Zoom transforms
+                            val cam = selectedClip.cameraAnim
+                            val zoom = selectedClip.zoomAnim
+
+                            val scaleX = if (zoom == ZoomAnimation.ZOOM_IN) 1.15f else 1.0f
+                            val scaleY = if (zoom == ZoomAnimation.ZOOM_IN) 1.15f else 1.0f
+
+                            AsyncImage(
+                                model = selectedClip.uriString,
+                                contentDescription = "Pré-visualização do clipe",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        this.scaleX = scaleX
+                                        this.scaleY = scaleY
+                                    }
+                            )
+                        } else {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Movie,
+                                    contentDescription = null,
+                                    tint = Color(0xFF5A5F82),
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Nenhuma mídia na timeline", color = Color(0xFF8E95C0), fontSize = 13.sp)
+                            }
+                        }
+
+                        // Play/Pause Overlay Button
+                        IconButton(
+                            onClick = { isPlaying = !isPlaying },
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Pausar" else "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Player Scrubber Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = String.format("%.1fs", currentPlaybackSec),
+                            fontSize = 11.sp,
+                            color = Color(0xFFB0B5E0)
+                        )
+                        Slider(
+                            value = currentPlaybackSec,
+                            onValueChange = { currentPlaybackSec = it },
+                            valueRange = 0f..totalDurationSec.coerceAtLeast(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF7C4DFF),
+                                activeTrackColor = Color(0xFF7C4DFF),
+                                inactiveTrackColor = Color(0xFF343854)
+                            )
+                        )
+                        Text(
+                            text = String.format("%.1fs", totalDurationSec),
+                            fontSize = 11.sp,
+                            color = Color(0xFFB0B5E0)
+                        )
+                    }
+                }
+            }
+
+            // 3. AREA INFERIOR DINÂMICA (SUBSTITUIÇÃO MODULAR OU TIMELINE)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF141624))
+            ) {
+                if (activeSubMenu != ActiveSubMenu.NONE) {
+                    // Modular Replacement Sub-Menu
+                    when (activeSubMenu) {
+                        ActiveSubMenu.RATIO -> {
+                            RatioSubMenu(
+                                currentRatio = aspectRatio,
+                                onSelectRatio = { viewModel.setAspectRatio(it) },
+                                onClose = { activeSubMenu = ActiveSubMenu.NONE }
+                            )
+                        }
+                        ActiveSubMenu.ANIMATION -> {
+                            AnimationSubMenu(
+                                selectedClip = selectedClip,
+                                onToggleCameraAnim = { anim -> viewModel.toggleCameraAnimation(selectedClip?.id ?: "", anim) },
+                                onToggleZoomAnim = { zoom -> viewModel.toggleZoomAnimation(selectedClip?.id ?: "", zoom) },
+                                onClose = { activeSubMenu = ActiveSubMenu.NONE }
+                            )
+                        }
+                        ActiveSubMenu.ZOOM -> {
+                            ZoomSubMenu(
+                                selectedClip = selectedClip,
+                                onToggleZoomAnim = { zoom -> viewModel.toggleZoomAnimation(selectedClip?.id ?: "", zoom) },
+                                onClose = { activeSubMenu = ActiveSubMenu.NONE }
+                            )
+                        }
+                        ActiveSubMenu.TRANSITION -> {
+                            TransitionSubMenu(
+                                selectedTransitionsPool = selectedTransitionsPool,
+                                isSelectionModeActive = isSelectionModeActive,
+                                onToggleSelectionMode = { viewModel.toggleTransitionSelectionMode() },
+                                onToggleTransitionInPool = { trans -> viewModel.toggleTransitionInPool(trans) },
+                                onPreviewTransition = { trans -> viewModel.assignTransitionToSelectedClip(trans) },
+                                onClose = { activeSubMenu = ActiveSubMenu.NONE }
+                            )
+                        }
+                        ActiveSubMenu.AUDIO -> {
+                            AudioSubMenu(
+                                audioTrack = audioTrack,
+                                isAnalyzing = isAnalyzingAudio,
+                                onUploadAudio = { audioPickerLauncher.launch("audio/*") },
+                                onRemoveAudio = { viewModel.removeAudioTrack() },
+                                onSyncSpeechPauses = { viewModel.syncImagesToSpeechPauses() },
+                                onClose = { activeSubMenu = ActiveSubMenu.NONE }
+                            )
+                        }
+                        else -> { activeSubMenu = ActiveSubMenu.NONE }
+                    }
+                } else {
+                    // Standard Timeline View
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Linha do Tempo (${mediaClips.size} mídias)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+
+                            IconButton(
+                                onClick = { mediaPickerLauncher.launch("image/* video/*") },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF6200EE))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Adicionar Mídia",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Horizontal Media Timeline Track
+                        if (mediaClips.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(90.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF1E2132))
+                                    .clickable { mediaPickerLauncher.launch("image/* video/*") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = Color(0xFF7C4DFF))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Clique aqui para importar mídias ou pasta", color = Color(0xFF9096B8), fontSize = 13.sp)
+                                }
+                            }
+                        } else {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                itemsIndexed(
+                                    items = mediaClips,
+                                    key = { _, item -> item.id }
+                                ) { index, clip ->
+                                    val isSelected = clip.id == selectedClipId
+
+                                    Card(
+                                        modifier = Modifier
+                                            .width(90.dp)
+                                            .height(90.dp)
+                                            .clickable { viewModel.selectClip(clip.id) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF222538)),
+                                        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF7C4DFF)) else null
+                                    ) {
+                                        Box(modifier = Modifier.fillMaxSize()) {
+                                            AsyncImage(
+                                                model = clip.uriString,
+                                                contentDescription = "Miniatura clipe ${index + 1}",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+
+                                            // Duration Badge
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(4.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color.Black.copy(alpha = 0.7f))
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = String.format("%.1fs", clip.durationSec),
+                                                    fontSize = 9.sp,
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+
+                                            // Delete Button
+                                            IconButton(
+                                                onClick = { viewModel.removeClip(clip.id) },
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .size(24.dp)
+                                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Remover clipe",
+                                                    tint = Color(0xFFFF5252),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. BOTTOM MENU NAVIGATION BAR (Proporção, Animações, Zoom, Transições, Áudio)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1B1D2D))
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = PrimaryPurple,
-                    modifier = Modifier.size(16.dp)
+                // Resource 1: Proporção
+                BottomNavItem(
+                    icon = Icons.Default.AspectRatio,
+                    label = "Proporção",
+                    isActive = activeSubMenu == ActiveSubMenu.RATIO,
+                    onClick = {
+                        activeSubMenu = if (activeSubMenu == ActiveSubMenu.RATIO) ActiveSubMenu.NONE else ActiveSubMenu.RATIO
+                    }
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "${audio.name} (${audio.detectedPausesMs.size} pausas detectadas)",
-                    color = TextPrimary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
+
+                // Resource 2: Animações
+                BottomNavItem(
+                    icon = Icons.Default.Videocam,
+                    label = "Animações",
+                    isActive = activeSubMenu == ActiveSubMenu.ANIMATION,
+                    onClick = {
+                        activeSubMenu = if (activeSubMenu == ActiveSubMenu.ANIMATION) ActiveSubMenu.NONE else ActiveSubMenu.ANIMATION
+                    }
+                )
+
+                // Resource 3: Zoom
+                BottomNavItem(
+                    icon = Icons.Default.ZoomIn,
+                    label = "Zoom",
+                    isActive = activeSubMenu == ActiveSubMenu.ZOOM,
+                    onClick = {
+                        activeSubMenu = if (activeSubMenu == ActiveSubMenu.ZOOM) ActiveSubMenu.NONE else ActiveSubMenu.ZOOM
+                    }
+                )
+
+                // Resource 4: Transições
+                BottomNavItem(
+                    icon = Icons.Default.Transform,
+                    label = "Transições",
+                    isActive = activeSubMenu == ActiveSubMenu.TRANSITION,
+                    onClick = {
+                        activeSubMenu = if (activeSubMenu == ActiveSubMenu.TRANSITION) ActiveSubMenu.NONE else ActiveSubMenu.TRANSITION
+                    }
+                )
+
+                // Resource 5: Áudio & Sincronização
+                BottomNavItem(
+                    icon = Icons.Default.Mic,
+                    label = "Áudio",
+                    isActive = activeSubMenu == ActiveSubMenu.AUDIO,
+                    onClick = {
+                        activeSubMenu = if (activeSubMenu == ActiveSubMenu.AUDIO) ActiveSubMenu.NONE else ActiveSubMenu.AUDIO
+                    }
                 )
             }
         }
     }
-}
 
-@Composable
-fun MainControlsPanel(
-    uiState: EditorUiState,
-    onOpenImport: () -> Unit,
-    onOpenPanel: (EditorPanel) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        ControlIconButton(
-            icon = Icons.Default.Add,
-            label = "Mídia / Pasta",
-            onClick = onOpenImport
+    // Auto Edit Progress Modal
+    if (showAutoEditModal) {
+        AutoEditModal(
+            renderState = renderState,
+            onCancelRender = { viewModel.cancelRendering() },
+            onOpenExportModal = { viewModel.openExportModal() },
+            onDismiss = { viewModel.dismissAutoEditModal() }
         )
-        ControlIconButton(
-            icon = Icons.Default.Animation,
-            label = "Animações",
-            badge = if (uiState.missingAnimationIndex >= 0) "!" else null,
-            onClick = { onOpenPanel(EditorPanel.ANIMATIONS) }
-        )
-        ControlIconButton(
-            icon = Icons.Default.Videocam,
-            label = "Zoom / Câmera",
-            onClick = { onOpenPanel(EditorPanel.CAMERA_ZOOM) }
-        )
-        ControlIconButton(
-            icon = Icons.Default.Transform,
-            label = "Transições",
-            badge = "${uiState.selectedTransitions.size}",
-            onClick = { onOpenPanel(EditorPanel.TRANSITIONS) }
-        )
-        ControlIconButton(
-            icon = Icons.Default.GraphicEq,
-            label = "Áudio & Sync",
-            onClick = { onOpenPanel(EditorPanel.AUDIO_SYNC) }
-        )
-        ControlIconButton(
-            icon = Icons.Default.AspectRatio,
-            label = "Proporção",
-            onClick = { onOpenPanel(EditorPanel.ASPECT_RATIO) }
+    }
+
+    // Export & Download Options Modal
+    if (showExportModal) {
+        ExportModal(
+            exportedFile = lastExportedFile,
+            selectedResolution = exportResolution,
+            selectedQuality = exportQuality,
+            selectedFps = exportFps,
+            onSelectResolution = { viewModel.setExportResolution(it) },
+            onSelectQuality = { viewModel.setExportQuality(it) },
+            onSelectFps = { viewModel.setExportFps(it) },
+            onDismiss = { viewModel.dismissExportModal() },
+            onSaveToGallery = { viewModel.dismissExportModal() }
         )
     }
 }
 
 @Composable
-fun ControlIconButton(
+fun BottomNavItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    badge: String? = null,
+    isActive: Boolean,
     onClick: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        Box {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(DarkSurfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = label, tint = TextPrimary, modifier = Modifier.size(22.dp))
-            }
-
-            badge?.let {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(AlertRed),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = it, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isActive) Color(0xFF7C4DFF) else Color(0xFF8E95C0),
+            modifier = Modifier.size(22.dp)
+        )
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = label, color = TextSecondary, fontSize = 11.sp)
-    }
-}
-
-@Composable
-fun SubPanelHeader(title: String, onDone: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = onDone,
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(DarkSurfaceVariant)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Voltar para Linha do Tempo",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = title,
-                color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Button(
-            onClick = onDone,
-            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = PrimaryPurpleText),
-            shape = RoundedCornerShape(16.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
-        ) {
-            Icon(Icons.Default.Check, contentDescription = "Concluído", tint = PrimaryPurpleText, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("Concluído", color = PrimaryPurpleText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AnimationsSubPanel(
-    uiState: EditorUiState,
-    onSelectMotion: (MotionAnimation) -> Unit,
-    onUpdateDuration: (Long) -> Unit,
-    onDone: () -> Unit
-) {
-    val activeMedia = uiState.mediaItems.getOrNull(uiState.selectedMediaIndex)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Animação de Movimento (${activeMedia?.title ?: ""})", onDone = onDone)
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(MotionAnimation.entries) { _, motion ->
-                val isSelected = activeMedia?.motionAnimation == motion
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onSelectMotion(motion) },
-                    label = { Text(motion.displayName, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PrimaryPurple,
-                        selectedLabelColor = PrimaryPurpleText,
-                        containerColor = DarkSurfaceVariant,
-                        labelColor = TextSecondary
-                    )
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Duration Slider
-        activeMedia?.let { media ->
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Duração da Mídia:", color = TextSecondary, fontSize = 11.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Slider(
-                    value = media.durationMs.toFloat(),
-                    onValueChange = { onUpdateDuration(it.toLong()) },
-                    valueRange = 1000f..8000f,
-                    modifier = Modifier.weight(1f),
-                    colors = SliderDefaults.colors(thumbColor = PrimaryPurple, activeTrackColor = PrimaryPurple)
-                )
-                Text("${media.durationMs / 1000f}s", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CameraSubPanel(
-    uiState: EditorUiState,
-    onSelectCamera: (CameraMotion) -> Unit,
-    onDone: () -> Unit
-) {
-    val activeMedia = uiState.mediaItems.getOrNull(uiState.selectedMediaIndex)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Movimento de Câmera (Pan & Zoom)", onDone = onDone)
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(CameraMotion.entries) { _, camera ->
-                val isSelected = activeMedia?.cameraMotion == camera
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onSelectCamera(camera) },
-                    label = { Text(camera.displayName, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PrimaryPurple,
-                        selectedLabelColor = PrimaryPurpleText,
-                        containerColor = DarkSurfaceVariant,
-                        labelColor = TextSecondary
-                    )
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun TransitionsSubPanel(
-    uiState: EditorUiState,
-    onPreviewTransition: (String) -> Unit,
-    onApplyTransition: (String) -> Unit,
-    onToggleMultiSelect: () -> Unit,
-    onSelectAll: () -> Unit,
-    onDone: () -> Unit
-) {
-    var selectedForApply by remember { mutableStateOf(uiState.previewTransitionEffectId ?: uiState.selectedTransitions.firstOrNull() ?: "CROSSFADE") }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Efeitos de Transição (Testar ao Vivo)", onDone = onDone)
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Toque em qualquer efeito para testar a prévia ao vivo:",
-                color = TextMuted,
-                fontSize = 11.sp
-            )
-
-            Button(
-                onClick = { onApplyTransition(selectedForApply) },
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = PrimaryPurpleText),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
-            ) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryPurpleText, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Aplicar Transição", color = PrimaryPurpleText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(TransitionEffect.ALL_TRANSITIONS) { _, effect ->
-                val isPreviewing = uiState.previewTransitionEffectId == effect.id
-                val isApplied = uiState.selectedTransitions.contains(effect.id) || selectedForApply == effect.id
-
-                Box(
-                    modifier = Modifier
-                        .width(115.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isPreviewing) PrimaryPurple.copy(alpha = 0.4f) else DarkSurfaceVariant)
-                        .border(
-                            1.dp,
-                            if (isPreviewing || isApplied) PrimaryPurple else Color.Transparent,
-                            RoundedCornerShape(12.dp)
-                        )
-                        .clickable {
-                            selectedForApply = effect.id
-                            onPreviewTransition(effect.id)
-                        }
-                        .padding(8.dp)
-                ) {
-                    Column {
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(effect.name, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            if (isPreviewing || isApplied) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(effect.description, color = TextMuted, fontSize = 9.sp, maxLines = 2)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AudioSubPanel(
-    uiState: EditorUiState,
-    onPickAudio: () -> Unit,
-    onRemoveAudio: (Int) -> Unit,
-    onAutoSync: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onDone: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Gerenciamento de Áudio & Sincronização", onDone = onDone)
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onPickAudio,
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = TextPrimary),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(Icons.Default.MusicNote, contentDescription = null, tint = SecondaryMint, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Upload Áudio", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-
-            Button(
-                onClick = onTogglePlay,
-                colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant, contentColor = TextPrimary),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = PrimaryPurple,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (uiState.isPlaying) "Pausar Prévia" else "Ouvir Prévia",
-                    color = TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        if (uiState.audioTracks.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            val track = uiState.audioTracks.first()
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = SecondaryMint, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(track.name, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text("Trilha ativa (${track.detectedPausesMs.size} pausas detectadas)", color = TextMuted, fontSize = 10.sp)
-                        }
-                    }
-                    IconButton(onClick = { onRemoveAudio(0) }) {
-                        Icon(Icons.Default.Close, contentDescription = "Remover", tint = AlertRed, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Button(
-            onClick = onAutoSync,
-            enabled = !uiState.isAnalyzingAudio,
-            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = PrimaryPurpleText),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (uiState.isAnalyzingAudio) {
-                CircularProgressIndicator(color = PrimaryPurpleText, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Analisando Pausas do Áudio...", color = PrimaryPurpleText, fontWeight = FontWeight.Bold)
-            } else {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = PrimaryPurpleText)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Auto-Sincronizar Linha do Tempo por Pausas", color = PrimaryPurpleText, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-fun AspectRatioSubPanel(
-    uiState: EditorUiState,
-    onSelectRatio: (AspectRatio) -> Unit,
-    onDone: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SubPanelHeader(title = "Proporção do Vídeo", onDone = onDone)
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            AspectRatio.entries.forEach { ratio ->
-                val isSelected = ratio == uiState.aspectRatio
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) PrimaryPurple else DarkSurfaceVariant)
-                        .clickable { onSelectRatio(ratio) }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = ratio.label,
-                        color = if (isSelected) Color.White else TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
-            }
-        }
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+            color = if (isActive) Color.White else Color(0xFF8E95C0)
+        )
     }
 }
