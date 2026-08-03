@@ -1,13 +1,6 @@
 package com.example.ui.screens
 
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,40 +8,34 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,351 +47,215 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.example.data.models.MediaItem
-import com.example.data.models.ProjectEntity
-import com.example.ui.theme.AlertRed
-import com.example.ui.theme.DarkCanvas
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceVariant
-import com.example.ui.theme.PrimaryPurple
-import com.example.ui.theme.PrimaryPurpleText
-import com.example.ui.theme.SecondaryMint
-import com.example.ui.theme.TextMuted
-import com.example.ui.theme.TextPrimary
-import com.example.ui.theme.TextSecondary
-import com.example.utils.MediaHelper
+import com.example.data.ProjectEntity
+import com.example.ui.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    projects: List<ProjectEntity>,
-    onCreateProjectWithMedia: (title: String, mediaItems: List<MediaItem>) -> Unit,
-    onOpenProject: (String) -> Unit,
-    onDeleteProject: (String) -> Unit
+    viewModel: MainViewModel,
+    onCreateNewProject: () -> Unit,
+    onOpenProject: (ProjectEntity) -> Unit
 ) {
-    val context = LocalContext.current
+    val projects by viewModel.projectsList.collectAsStateWithLifecycle()
     var projectToDelete by remember { mutableStateOf<ProjectEntity?>(null) }
-    var showImportOptionsDialog by remember { mutableStateOf(false) }
-
-    val pickFilesLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris ->
-        if (!uris.isNullOrEmpty()) {
-            val mediaItems = MediaHelper.processFileUris(context, uris)
-            if (mediaItems.isNotEmpty()) {
-                val title = "Projeto ${SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date())}"
-                onCreateProjectWithMedia(title, mediaItems)
-            } else {
-                Toast.makeText(context, "Nenhum arquivo válido de imagem ou vídeo selecionado.", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Toast.makeText(context, "Nenhuma mídia foi selecionada. Projeto não criado.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    val pickFolderLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri ->
-        if (treeUri != null) {
-            val mediaItems = MediaHelper.processFolderUri(context, treeUri)
-            if (mediaItems.isNotEmpty()) {
-                val title = "Pasta ${treeUri.lastPathSegment?.takeLast(15) ?: "Projeto"}"
-                onCreateProjectWithMedia(title, mediaItems)
-            } else {
-                Toast.makeText(context, "Nenhuma imagem ou vídeo encontrado na pasta selecionada.", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Toast.makeText(context, "Nenhuma pasta foi selecionada. Projeto não criado.", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     Scaffold(
-        containerColor = DarkCanvas,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(PrimaryPurple, SecondaryMint)
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Movie,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Video Motion",
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp
-                            )
-                            Text(
-                                text = "Editor de Vídeos e Animações",
-                                color = TextSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkSurface
-                )
-            )
-        },
-        floatingActionButton = {
-            Button(
-                onClick = { showImportOptionsDialog = true },
-                modifier = Modifier
-                    .testTag("create_new_project_fab")
-                    .height(54.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryPurple,
-                    contentColor = PrimaryPurpleText
-                ),
-                shape = RoundedCornerShape(28.dp),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Novo Projeto",
-                    tint = PrimaryPurpleText
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Novo Projeto",
-                    color = PrimaryPurpleText,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
-        }
+        containerColor = Color(0xFF10121B)
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Main Dashboard Action Options Cards (Requirement 1)
+            // Header Title
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Card 1: Start New Project
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable { showImportOptionsDialog = true }
-                        .border(1.dp, PrimaryPurple.copy(alpha = 0.5f), RoundedCornerShape(18.dp)),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(PrimaryPurple, SecondaryMint)
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Criar Novo Projeto",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Novo Projeto",
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Galeria ou Pasta",
-                            color = TextMuted,
-                            fontSize = 11.sp
-                        )
-                    }
+                Column {
+                    Text(
+                        text = "Editor de Vídeo",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Projetos em Rascunho",
+                        fontSize = 13.sp,
+                        color = Color(0xFF9EA3C0)
+                    )
                 }
 
-                // Card 2: My Projects / View Drafts
-                Card(
+                Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .border(1.dp, Color(0xFF2B2E42), RoundedCornerShape(18.dp)),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF222538))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(DarkSurfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Movie,
-                                contentDescription = "Meus Projetos",
-                                tint = SecondaryMint,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Meus Projetos",
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${projects.size} rascunhos",
-                            color = SecondaryMint,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    Text(
+                        text = "${projects.size} Projetos",
+                        fontSize = 12.sp,
+                        color = Color(0xFFB0B5E0),
+                        fontWeight = FontWeight.Medium
+                    )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Section Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Rascunhos Salvos",
-                    color = TextPrimary,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${projects.size} projetos",
-                    color = TextMuted,
-                    fontSize = 12.sp
-                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Prominent "Criar Novo Projeto" Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("create_new_project_card")
+                    .clickable {
+                        viewModel.createNewProject()
+                        onCreateNewProject()
+                    },
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF6200EE),
+                                    Color(0xFF8038FF),
+                                    Color(0xFF3700B3)
+                                )
+                            )
+                        )
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Criar Novo Projeto",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Importe mídias, aplique transições e áudio com sincronização por IA",
+                                fontSize = 13.sp,
+                                color = Color(0xFFE0E0FF)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Criar Projeto",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Seus Projetos",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            // Empty State Check
             if (projects.isEmpty()) {
-                // Empty State View
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .padding(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                        shape = RoundedCornerShape(24.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Column(
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1E2132)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(CircleShape)
-                                    .background(DarkSurfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.VideoLibrary,
-                                    contentDescription = null,
-                                    tint = PrimaryPurple,
-                                    modifier = Modifier.size(40.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Text(
-                                text = "Ainda não existe nenhum projeto",
-                                color = TextPrimary,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                imageVector = Icons.Default.VideoLibrary,
+                                contentDescription = null,
+                                tint = Color(0xFF5A5F82),
+                                modifier = Modifier.size(40.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Toque em 'Novo Projeto' para importar fotos, vídeos e aplicar animações de câmera e transições.",
-                                color = TextSecondary,
-                                fontSize = 13.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Button(
-                                onClick = { showImportOptionsDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Criar Primeiro Projeto", color = Color.White)
-                            }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "Ainda não existe nenhum projeto",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF9096B8)
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Clique em 'Criar Novo Projeto' para começar",
+                            fontSize = 13.sp,
+                            color = Color(0xFF62678A)
+                        )
                     }
                 }
             } else {
-                // Draft Projects List
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp),
-                    modifier = Modifier.fillMaxSize()
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
-                    items(projects, key = { it.id }) { project ->
-                        ProjectDraftCard(
+                    items(
+                        items = projects,
+                        key = { it.id }
+                    ) { project ->
+                        ProjectCardItem(
                             project = project,
-                            onClick = { onOpenProject(project.id) },
-                            onDelete = { projectToDelete = project }
+                            onOpenDraft = {
+                                viewModel.loadProject(project)
+                                onOpenProject(project)
+                            },
+                            onDelete = {
+                                projectToDelete = project
+                            }
                         )
                     }
                 }
@@ -412,161 +263,37 @@ fun DashboardScreen(
         }
     }
 
-    if (showImportOptionsDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportOptionsDialog = false },
-            title = {
-                Text(
-                    text = "Criar Novo Projeto",
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    fontSize = 18.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Escolha como deseja selecionar mídias para a linha do tempo:",
-                        color = TextSecondary,
-                        fontSize = 13.sp
-                    )
-
-                    // Option 1: Pick Photos and Videos
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showImportOptionsDialog = false
-                                pickFilesLauncher.launch("*/*")
-                            },
-                        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(PrimaryPurple.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PhotoLibrary,
-                                    contentDescription = null,
-                                    tint = PrimaryPurple
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Fotos e Vídeos da Galeria",
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "Selecione múltiplos arquivos de imagem e vídeo",
-                                    color = TextMuted,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                    }
-
-                    // Option 2: Pick Directory Folder
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showImportOptionsDialog = false
-                                pickFolderLauncher.launch(null)
-                            },
-                        colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(SecondaryMint.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = SecondaryMint
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Pasta / Diretório Completo",
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "Importar todas as fotos e vídeos de uma pasta",
-                                    color = TextMuted,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showImportOptionsDialog = false }) {
-                    Text("Cancelar", color = TextSecondary)
-                }
-            },
-            containerColor = DarkSurface,
-            titleContentColor = TextPrimary,
-            textContentColor = TextSecondary
-        )
-    }
-
     // Delete Confirmation Dialog
-    projectToDelete?.let { draft ->
+    projectToDelete?.let { project ->
         AlertDialog(
             onDismissRequest = { projectToDelete = null },
-            title = { Text("Excluir Rascunho", fontWeight = FontWeight.Bold) },
-            text = { Text("Tem certeza que deseja excluir '${draft.title}'? Esta ação não pode ser desfeita.") },
+            title = { Text("Excluir Projeto", color = Color.White) },
+            text = { Text("Tem certeza que deseja excluir o projeto '${project.title}'? Esta ação é irreversível.", color = Color(0xFFC0C5E0)) },
+            containerColor = Color(0xFF1E2132),
             confirmButton = {
                 Button(
                     onClick = {
-                        onDeleteProject(draft.id)
+                        viewModel.deleteProject(project.id)
                         projectToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
                 ) {
                     Text("Excluir", color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { projectToDelete = null }) {
-                    Text("Cancelar", color = TextSecondary)
+                    Text("Cancelar", color = Color(0xFF9096B8))
                 }
-            },
-            containerColor = DarkSurface,
-            titleContentColor = TextPrimary,
-            textContentColor = TextSecondary
+            }
         )
     }
 }
 
 @Composable
-fun ProjectDraftCard(
+fun ProjectCardItem(
     project: ProjectEntity,
-    onClick: () -> Unit,
+    onOpenDraft: () -> Unit,
     onDelete: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()) }
@@ -575,104 +302,114 @@ fun ProjectDraftCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .border(1.dp, Color(0xFF2B2E42), RoundedCornerShape(16.dp)),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .testTag("project_card_${project.id}"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1E2E))
     ) {
-        Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Thumbnail
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 10f)
-                    .background(DarkSurfaceVariant),
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF2B2F48)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!project.thumbnailUri.isNullOrEmpty()) {
+                if (project.thumbnailPath.isNotEmpty()) {
                     AsyncImage(
-                        model = project.thumbnailUri,
-                        contentDescription = project.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        model = project.thumbnailPath,
+                        contentDescription = "Miniatura do projeto",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.Movie,
                         contentDescription = null,
-                        tint = TextMuted,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-
-                // Rendered badge tag if video file exists
-                if (!project.renderedVideoPath.isNullOrEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .background(SecondaryMint, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text("Renderizado", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Abrir",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        tint = Color(0xFF7076A0),
+                        modifier = Modifier.size(32.dp)
                     )
                 }
             }
 
-            Column(modifier = Modifier.padding(10.dp)) {
+            Spacer(modifier = Modifier.width(14.dp))
+
+            // Details
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = project.title,
-                    color = TextPrimary,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = Color.White
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
-                    text = formattedDate,
-                    color = TextMuted,
-                    fontSize = 10.sp
+                    text = "Atualizado: $formattedDate",
+                    fontSize = 12.sp,
+                    color = Color(0xFF8A90B2)
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = project.aspectRatioName.replace("RATIO_", "").replace("_", ":"),
-                        color = PrimaryPurple,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(28.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF2E3350))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
+                        Text(
+                            text = project.aspectRatio,
+                            fontSize = 11.sp,
+                            color = Color(0xFFB0B8E8)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action Buttons
+            Column(horizontalAlignment = Alignment.End) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Excluir projeto",
+                        tint = Color(0xFFFF6B6B)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Button(
+                    onClick = onOpenDraft,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Excluir Rascunho",
-                            tint = AlertRed.copy(alpha = 0.8f),
-                            modifier = Modifier.size(18.dp)
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Abrir",
+                            fontSize = 12.sp,
+                            color = Color.White
                         )
                     }
                 }
